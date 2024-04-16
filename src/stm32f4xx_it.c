@@ -15,6 +15,7 @@
 #include "stm32f4xx_it.h"
 #include "stm32f4xx_conf.h"
 #include "main.h"
+#include "bmp280.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -28,6 +29,7 @@ extern volatile uint32_t    opTimeOut;
 extern volatile uint32_t    sysMode;
 
 extern volatile uint8_t     devStatus;
+extern volatile uint16_t    currentAPvalue;
 extern volatile uint32_t    runChain;
 
 /* Private variables ---------------------------------------------------------*/
@@ -107,7 +109,10 @@ void  SysTick_Handler (void)
         TimingDelay--;
 
     if (devStatus == DEV_STATUS_RUN)
+    {
+        currentAPvalue = readPSensor ();
         runChain = 1;
+    }
 
     // delay timer
     if (toDelay)

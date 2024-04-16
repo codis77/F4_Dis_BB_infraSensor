@@ -37,12 +37,14 @@
 #include "stm32f4_discovery_lcd.h"
 #include "bmp280.h"
 #include "hal_spi.h"
+#include "ff.h"
 
 /* external variables ---------------------------*/
 
 /* variables ------------------------------------*/
 RCC_ClocksTypeDef     RCC_Clocks;
-volatile uint32_t     toDelay             = 0;   /* Timeout Delay, in ms */
+volatile uint32_t     toDelay             = 0;   /* Timeout Delay, in ms    */
+volatile uint16_t     currentAPvalue      = 0;   /* current pressure sample */
 volatile uint32_t     runChain            = 0;
 volatile uint32_t     txTimer             = 0;
 uint16_t              calValue            = 0;   /* calibration value */
@@ -50,6 +52,12 @@ uint8_t               sysMode             = 0;   /* system state      */
 uint8_t               btnState            = 0;
 uint16_t              buffer0[DB_SIZE]    = {0};
 uint16_t              buffer1[DB_SIZE]    = {0};
+volatile uint16_t    *bufPtr              = buffer0;  /* transmit buffer pointer */
+volatile uint16_t    *smpPtr              = buffer0;  /* sample buffer pointer   */
+uint8_t               currentBufIndex     = 0;
+uint8_t               currentSmpIndex     = 0;
+uint8_t               txBuffer            = 0;
+uint8_t               SmplBuffer          = 0;
 
 static uint8_t        msgBuffer[MSG_SIZE] = {0};
 volatile uint8_t      devStatus           = DEV_STATUS_NONE;
@@ -62,6 +70,10 @@ static const int8_t   DbgMsg[]            = "Infrasound sensing Application V1.0
 static const int8_t   AtMsg[]             = "< @f.m.  04 / 2024 >";
 static const int8_t   RxMsg[]             = "system in receive mode !";
 static const int8_t   CalMsg[]            = "calibrate system ...";
+
+/// --- SD card related ---
+static FATFS          fatfs;
+
 
 /* function prototypes --------------------------
  */
@@ -141,13 +153,12 @@ int  main (void)
     {
         if (runChain)
         {
+            STM_EVAL_LEDOn (LED6);    // blue LED on
+            data = currentAPvalue;    // get value from interrupt handler
             runChain = 0;
-            STM_EVAL_LEDOn (LED6);    /// blue LED, Tx ongoing
-            data = readPSensor ();
             putItem (data);
             STM_EVAL_LEDOff (LED6);   // blue LED off
         }
-
     }
     while (1);
 }
@@ -244,7 +255,7 @@ static uint8_t  initLatency = 1;
  */
 void  putItem (uint16_t data)
 {
-#if 0
+#if 1
     uint8_t  bufFull = 0;
 
     *smpPtr++ = data;
@@ -276,8 +287,10 @@ void  putItem (uint16_t data)
             sysMode  = DEV_STATUS_RUN;
             calValue = getCalibrationValue (buffer0, DB_SIZE);
             /* create tx string, and init transmission */
+#if 0
             len = sprintf ((char *)sBuffer, "#XC=%hd\n", data);
             writeBuffer ((uint8_t *) sBuffer, len);
+#endif
         }
     }
     else  // run mode, interleave data sampling with transmission
@@ -314,5 +327,152 @@ static void  eLoop (void)
     }
 }
 
+
+
+/* use one sample buffer as calibration data;
+ * using the simple average as calibration value;
+ */
+static uint16_t  getCalibrationValue (uint16_t *pBuffer, uint16_t items)
+{
+    int           i;
+    unsigned int  sum = 0;
+ 
+    for (i=0; i<items; i++)
+        sum += pBuffer[i];
+ 
+    return (uint16_t)(sum / items);
+}
+
+
+/* ******************************************************************
+ */
+#define DATA_FILENAME_BASE     "APsmpl"
+#define DATA_FILENAME_EXT      ".dat"
+#define MAX_FILE_ID_NUM        100
+
+static char   tBuffer[80] = {0};
+
+uint32_t         storeBuffer    (uint16_t *bufptr, uint32_t size);
+static uint32_t  getNextFileID  (void);
+static uint32_t  openOutputFile (uint32_t curID, FIL *pFile);
+static uint32_t  putHeader      (FIL *pFile);
+
+/* momentane GPS-Position auf SD-Karte abspeichern;
+ * die gesamte Dateiverwaltung wird in dieser Funktion behandelt;
+ */
+uint32_t  storeBuffer (uint16_t *bufptr, uint32_t size)
+{
+    uint32_t         i;
+    static int32_t   fileState = 0;
+    static uint32_t  FileID    = 0;
+    static FIL       file;
+
+    if (fileState == -1)
+        return (1);
+
+    /* evaluate a name for the measure data file */
+    if (fileState == 0)
+    {
+        if (f_mount (0, &fatfs) != FR_OK)
+            fileState = -1;
+        fileState = 1;
+        FileID = getNextFileID ();
+        i      = openOutputFile (FileID, &file);
+        putHeader (&file);
+    }
+
+#if 0
+    return (putDataItem (pPos, &file));
+#endif
+}
+
+
+
+/* find the next name that does not yet exist as file on the SD card;
+ * if all file names are used, '1' is returned (i.e. older files are overwritten)
+ */
+static uint32_t  getNextFileID (void)
+{
+    uint32_t  curID, found, r;
+    FIL       F1;
+
+    curID = 1;
+    found = 0;
+    while (!found)
+    {
+        sprintf (tBuffer, "%s%0d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
+        r = f_open (&F1, tBuffer, FA_READ);
+        /* if already exists, close and try next */
+        if (r == FR_OK)
+        {
+            curID++;
+            f_close (&F1);
+        }
+        else
+            found = 1;
+        /* if there are too much files, force use of ID '1' */
+        if ((!found) && (curID > MAX_FILE_ID_NUM))
+        {
+            curID = 1;
+            found = 1;
+        }
+    }
+
+    return (curID);
+}
+
+
+
+/* open the output file, including an ID number in the file name;
+ * the ID number is given as argument;
+ * return value is that of the called f_open() function
+ */
+static uint32_t  openOutputFile (uint32_t curID, FIL *pFile)
+{
+    sprintf (tBuffer, "%s%04d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
+    return (f_open (pFile, (const char *) tBuffer, FA_WRITE));
+}
+
+
+
+/* write header information to the output (SD card file);
+ * parameter is the current sensitivity value;
+ * return value is a success/error message from the file system
+ */
+static uint32_t  putHeader (FIL *pFile)
+{
+    uint32_t  bCnt, ret = 0;
+
+    sprintf (tBuffer, "#! -Air Pressure / Infrasound Logger V%d.%d (c)fm ---\n", SW_VERSION_MAJOR, SW_VERSION_MINOR);
+    ret  = f_write (pFile, tBuffer, strlen(tBuffer), (UINT *) &bCnt);
+    if (ret == 0)
+        f_sync (pFile);
+
+    return (ret);
+}
+
+
+
+/* write a data item to the output (SD card file);
+ * parameter is the current sensitivity value;
+ * return value is a success/error message from the file system
+ * (0 = o.k; 1..n = error)
+ */
+#if 0
+static uint32_t  putDataItem (struct GPS_Position *pPos, FIL *pFile)
+{
+    uint32_t  ret, bCnt = 0;
+
+    sprintf (tbuffer, "%s,%.4f,%.4f,%.4f\n", pPos->m_szTime, pPos->m_fLongitude, pPos->m_fLatitude, pPos->m_fHeight);
+    ret = f_write (pFile, tbuffer, strlen(tbuffer), (UINT *) &bCnt);
+    if (ret == 0)
+    {
+        f_sync (pFile);
+        return 0;
+    }
+
+    return 1;
+}
+#endif
 
 /*************************** End of file ****************************/

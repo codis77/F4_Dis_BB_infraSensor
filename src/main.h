@@ -2,16 +2,10 @@
 /* version number;
  */
 #define SW_VERSION_MAJOR        0
-#define SW_VERSION_MINOR        1
-
-// define this device as receiver
-#define _IS_RX_
+#define SW_VERSION_MINOR        3
 
 // enable serial data output (UART 1 / PC4 + PC5, 115200 baud)
 #define _SERIAL_OUTPUT_
-
-/// the device ID name
-#define ID_THIS_DEVICE          "M3"
 
 /* USART Communication boards Interface */
 #define ABS(x)                  (x < 0) ? (-x) : x
@@ -48,7 +42,7 @@
 #define DEV_STATUS_ERROR        0x80
 #define BUFFER_0                0       // transmit definitions ...
 #define BUFFER_1                1
-#define DB_SIZE                 16
+#define DB_SIZE                 32
 #define MSG_SIZE                48      // display message buffer size
 
 /* ------------------ graphics/display settings  ------------------ */
