@@ -49,7 +49,7 @@
 #define BUFFER_0                0       // transmit definitions ...
 #define BUFFER_1                1
 #define DB_SIZE                 16
-
+#define MSG_SIZE                48      // display message buffer size
 
 /* ------------------ graphics/display settings  ------------------ */
 #define X_RESOLUTION            320
@@ -60,6 +60,7 @@
 #define HEADER_POS_Y            0               // header (logo) position on display -> y
 #define HEADER_LINE             0
 #define SYSMOD_LINE             3               // system mode display line
+#define ERR_MSG_LINE            12              // error message display line
 #define CUR_POS_X               0               // current position on display -> x
 #define CUR_POS_Y               295             // current position on display -> y
 #define CUR_POS_LINE            29

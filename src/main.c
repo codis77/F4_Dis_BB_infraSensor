@@ -42,25 +42,26 @@
 
 /* variables ------------------------------------*/
 RCC_ClocksTypeDef     RCC_Clocks;
-volatile uint32_t     toDelay          = 0;   /* Timeout Delay, in ms */
-volatile uint32_t     runChain         = 0;
-volatile uint32_t     txTimer          = 0;
-uint16_t              calValue         = 0;   /* calibration value */
-uint8_t               sysMode          = 0;   /* system state      */
-uint8_t               btnState         = 0;
-uint16_t              buffer0[DB_SIZE] = {0};
-uint16_t              buffer1[DB_SIZE] = {0};
+volatile uint32_t     toDelay             = 0;   /* Timeout Delay, in ms */
+volatile uint32_t     runChain            = 0;
+volatile uint32_t     txTimer             = 0;
+uint16_t              calValue            = 0;   /* calibration value */
+uint8_t               sysMode             = 0;   /* system state      */
+uint8_t               btnState            = 0;
+uint16_t              buffer0[DB_SIZE]    = {0};
+uint16_t              buffer1[DB_SIZE]    = {0};
 
-volatile uint8_t      devStatus        = DEV_STATUS_NONE;
+static uint8_t        msgBuffer[MSG_SIZE] = {0};
+volatile uint8_t      devStatus           = DEV_STATUS_NONE;
 
-volatile uint32_t     TimingDelay      = 0;
-static uint16_t       btCount          = 0;  // received button press counter
-static uint16_t       btLastState      = 0;  // button press flag
+volatile uint32_t     TimingDelay         = 0;
+static uint16_t       btCount             = 0;  // received button press counter
+static uint16_t       btLastState         = 0;  // button press flag
 
-static const int8_t   DbgMsg[]         = "Infrasound sensing Application V1.0";
-static const int8_t   AtMsg[]          = "< @f.m.  04 / 2024 >";
-static const int8_t   RxMsg[]          = "system in receive mode !";
-static const int8_t   CalMsg[]         = "calibrate system ...";
+static const int8_t   DbgMsg[]            = "Infrasound sensing Application V1.0";
+static const int8_t   AtMsg[]             = "< @f.m.  04 / 2024 >";
+static const int8_t   RxMsg[]             = "system in receive mode !";
+static const int8_t   CalMsg[]            = "calibrate system ...";
 
 /* function prototypes --------------------------
  */
@@ -70,8 +71,8 @@ static void      sysdelay            (uint32_t delaytime);
 static void      eLoop               (void);
 void             tdelay              (uint16_t ticks);
 void             putItem             (uint16_t);
-void             sendItem            (void);
-void             sSendBuffer         (uint8_t *str, uint8_t size);
+void             writeItem           (void);
+void             writeBuffer         (uint8_t *str, uint8_t size);
 static uint16_t  getCalibrationValue (uint16_t *pBuffer, uint16_t items);
 
 
@@ -112,7 +113,8 @@ int  main (void)
     ret = initSensor (BMP280_CONFIG_MODE_0);
     if (ret != BMP280_ID)
     {
-        printf ("sensor init failure (ID read) !\n");
+        sprintf ((char *) msgBuffer, "sensor init failure (ID read) !\n");
+        LCD_DisplayStringLine (LINE(ERR_MSG_LINE), msgBuffer);
         devStatus = DEV_STATUS_ERROR;
         eLoop ();
     }
@@ -131,7 +133,7 @@ int  main (void)
     if (sysMode == DEV_STATUS_CALIBRATE)
     {
         pm = (char *) CalMsg;
-        LCD_DisplayStringLine (LINE(SYSMOD_LINE), pm);
+        LCD_DisplayStringLine (LINE(SYSMOD_LINE), (uint8_t *) pm);
     }
 
     ///> main loop; read pressure value regularly
@@ -177,7 +179,7 @@ static void  sysdelay (uint32_t delaytime)
 
 
 
-// display Rx status information
+// display debug status information
 static void  putLcdDbgLine (void)
 {
     char  dBuf[24] = { 0 };
@@ -185,6 +187,8 @@ static void  putLcdDbgLine (void)
     sprintf (dBuf, "some data...");
     LCD_DisplayStringLine (LINE(CUR_POS_LINE), (uint8_t *) dBuf);
 }
+
+
 
 /* a simpler delay function version, based on ticks instead of milliseconds;
  */
@@ -195,10 +199,10 @@ void  tdelay (uint16_t ticks)
 }
 
 
-/* prepare a data item for UART transmission, and initiate the sending;
+/* prepare a data item for storage, and initiate the write;
  * 
  */
-void  sendItem (void)
+void  writeItem (void)
 {
 #if 0
     int       len;
@@ -225,7 +229,7 @@ void  sendItem (void)
 
     /* create tx string, and init transmission */
     len = sprintf ((char *)sBuffer, "%hX\n", data);
-    sSendBuffer ((uint8_t *) sBuffer, len);
+    writeBuffer ((uint8_t *) sBuffer, len);
 #endif
 }
 
@@ -273,18 +277,18 @@ void  putItem (uint16_t data)
             calValue = getCalibrationValue (buffer0, DB_SIZE);
             /* create tx string, and init transmission */
             len = sprintf ((char *)sBuffer, "#XC=%hd\n", data);
-            sSendBuffer ((uint8_t *) sBuffer, len);
+            writeBuffer ((uint8_t *) sBuffer, len);
         }
     }
     else  // run mode, interleave data sampling with transmission
-        sendItem();
+        writeItem();
 #endif
 }
 
 
-/* initiate the transmission of a string via UART
+/* initiate the write of a string to the SD card file
  */
-void  sSendBuffer (uint8_t *str, uint8_t size)
+void  writeBuffer (uint8_t *str, uint8_t size)
 {
 #if 0
 //  LL_USART_EnableIT_TXE (USART1);
