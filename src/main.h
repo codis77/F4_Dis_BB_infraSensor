@@ -43,7 +43,14 @@
 #define BUFFER_0                0       // transmit definitions ...
 #define BUFFER_1                1
 #define DB_SIZE                 32
+#define CAL_ITEMS               32
 #define MSG_SIZE                48      // display message buffer size
+#define WR_LSIZE                8       // size of a data file line
+#define FSYNC_SIZE              64      // fwrite operations before sync
+
+#define DATA_FILENAME_BASE      "APsmpl"
+#define DATA_FILENAME_EXT       ".dat"
+#define MAX_FILE_ID_NUM         100
 
 /* ------------------ graphics/display settings  ------------------ */
 #define X_RESOLUTION            320

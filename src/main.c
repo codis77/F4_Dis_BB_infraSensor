@@ -62,6 +62,7 @@ uint8_t               SmplBuffer          = 0;
 static uint8_t        msgBuffer[MSG_SIZE] = {0};
 volatile uint8_t      devStatus           = DEV_STATUS_NONE;
 
+
 volatile uint32_t     TimingDelay         = 0;
 static uint16_t       btCount             = 0;  // received button press counter
 static uint16_t       btLastState         = 0;  // button press flag
@@ -73,6 +74,9 @@ static const int8_t   CalMsg[]            = "calibrate system ...";
 
 /// --- SD card related ---
 static FATFS          fatfs;
+static int32_t        fileState = 0;
+static uint32_t       FileID    = 0;
+static FIL            file;
 
 
 /* function prototypes --------------------------
@@ -86,6 +90,12 @@ void             putItem             (uint16_t);
 void             writeItem           (void);
 void             writeBuffer         (uint8_t *str, uint8_t size);
 static uint16_t  getCalibrationValue (uint16_t *pBuffer, uint16_t items);
+
+static uint32_t  openDataFile        (void);
+static uint32_t  getNextFileID       (void);
+static uint32_t  putHeader           (FIL *pFile);
+static uint32_t  openOutputFile      (uint32_t curID, FIL *pFile);
+static uint32_t  putDataItem         (uint16_t data, FIL *pFile);
 
 
 
@@ -125,7 +135,7 @@ int  main (void)
     ret = initSensor (BMP280_CONFIG_MODE_0);
     if (ret != BMP280_ID)
     {
-        sprintf ((char *) msgBuffer, "sensor init failure (ID read) !\n");
+        sprintf ((char *) msgBuffer, "sensor init failure (ID read) !");
         LCD_DisplayStringLine (LINE(ERR_MSG_LINE), msgBuffer);
         devStatus = DEV_STATUS_ERROR;
         eLoop ();
@@ -139,6 +149,13 @@ int  main (void)
     ret = getReg (REG_CONFIG);
     printf ("CFG  = 0x%02x\n", ret);
 #endif
+
+    // open SD card file; don't choke on errors
+    if (openDataFile () != 0)
+    {
+        sprintf ((char *) msgBuffer, "SD card file failure; no storage !");
+        LCD_DisplayStringLine (LINE(ERR_MSG_LINE), msgBuffer);
+    }
 
     devStatus = DEV_STATUS_RUN;
 
@@ -210,107 +227,31 @@ void  tdelay (uint16_t ticks)
 }
 
 
-/* prepare a data item for storage, and initiate the write;
- * 
- */
-void  writeItem (void)
-{
-#if 0
-    int       len;
-    uint16_t  data;
 
-    data = *bufPtr++;
-    currentBufIndex++;
-
-    /* double buffer management */
-    if (currentBufIndex >= DB_SIZE)
-    {
-        currentBufIndex = 0;
-        if (txBuffer == 0)
-        {
-            bufPtr   = buffer1;
-            txBuffer = 1;
-        }
-        else
-        {
-            bufPtr   = buffer0;
-            txBuffer = 0;
-        }
-    }
-
-    /* create tx string, and init transmission */
-    len = sprintf ((char *)sBuffer, "%hX\n", data);
-    writeBuffer ((uint8_t *) sBuffer, len);
-#endif
-}
-
-
-
-static uint8_t  initLatency = 1;
-
-/* put sample item into the double-buffer;
- * consequently, trigger the next states of the sample event chain:
- * either calculate the calibration data and transmit them,
- * or send the next data item once one buffer is full;
+/* process the sample item;
+ * consequently, save it to file in run mode;
+ * in calibration mode, just evaluate the calibration value
  */
 void  putItem (uint16_t data)
 {
-#if 1
-    uint8_t  bufFull = 0;
+    static uint32_t  avg     = 0;
+    static uint32_t  avcount = 0;
 
-    *smpPtr++ = data;
-    currentSmpIndex++;
-
-    /* double buffer management */
-    if (currentSmpIndex > DB_SIZE)
-    {
-        currentSmpIndex = 0;
-        if (SmplBuffer == 0)
-        {
-            smpPtr      = buffer1;
-            SmplBuffer  = 1;
-            bufFull     = 1;
-            initLatency = 0;  // reset the delay marker
-        }
-        else
-        {
-            smpPtr     = buffer0;
-            SmplBuffer = 0;
-        }
-    }
     if (sysMode == DEV_STATUS_CALIBRATE)
     {
-        if (bufFull)
-        {
-            int       len;
+        avg += data;
+        avcount++;
 
+        if (avcount >= CAL_ITEMS)
+        {
             sysMode  = DEV_STATUS_RUN;
-            calValue = getCalibrationValue (buffer0, DB_SIZE);
-            /* create tx string, and init transmission */
-#if 0
-            len = sprintf ((char *)sBuffer, "#XC=%hd\n", data);
-            writeBuffer ((uint8_t *) sBuffer, len);
-#endif
+            calValue = avg / CAL_ITEMS;
         }
     }
-    else  // run mode, interleave data sampling with transmission
-        writeItem();
-#endif
+    else
+        (void) putDataItem (data, &file);
 }
 
-
-/* initiate the write of a string to the SD card file
- */
-void  writeBuffer (uint8_t *str, uint8_t size)
-{
-#if 0
-//  LL_USART_EnableIT_TXE (USART1);
-    USART1->CR1 |= USART_CR1_TXEIE_TXFNFIE;  // enable TXE interrupt
-    sBufIndex    = 1;                        // set index for first interrupt
-    sBufChars    = size - 1;                 // and string length
-    USART1->TDR  = str[0];                   // push first character
-#endif
-}
 
 
 /* endless error loop;
@@ -329,48 +270,23 @@ static void  eLoop (void)
 
 
 
-/* use one sample buffer as calibration data;
- * using the simple average as calibration value;
+/* **************************************************************
+ * ******************** SD card related code ********************
  */
-static uint16_t  getCalibrationValue (uint16_t *pBuffer, uint16_t items)
+
+static char   tBuffer[80] = {0};  // string buffer for some file operations
+
+
+/* open the SD card file for writing the sample data;
+ * use a fixed file name base with a running 2-digit number;
+ * if no free name is found, force "1" as running number;
+ * return 0 if everything went well;
+ * return 1 upon error
+ */
+static uint32_t   openDataFile (void)
 {
-    int           i;
-    unsigned int  sum = 0;
- 
-    for (i=0; i<items; i++)
-        sum += pBuffer[i];
- 
-    return (uint16_t)(sum / items);
-}
+    uint32_t  i;
 
-
-/* ******************************************************************
- */
-#define DATA_FILENAME_BASE     "APsmpl"
-#define DATA_FILENAME_EXT      ".dat"
-#define MAX_FILE_ID_NUM        100
-
-static char   tBuffer[80] = {0};
-
-uint32_t         storeBuffer    (uint16_t *bufptr, uint32_t size);
-static uint32_t  getNextFileID  (void);
-static uint32_t  openOutputFile (uint32_t curID, FIL *pFile);
-static uint32_t  putHeader      (FIL *pFile);
-
-/* momentane GPS-Position auf SD-Karte abspeichern;
- * die gesamte Dateiverwaltung wird in dieser Funktion behandelt;
- */
-uint32_t  storeBuffer (uint16_t *bufptr, uint32_t size)
-{
-    uint32_t         i;
-    static int32_t   fileState = 0;
-    static uint32_t  FileID    = 0;
-    static FIL       file;
-
-    if (fileState == -1)
-        return (1);
-
-    /* evaluate a name for the measure data file */
     if (fileState == 0)
     {
         if (f_mount (0, &fatfs) != FR_OK)
@@ -381,11 +297,15 @@ uint32_t  storeBuffer (uint16_t *bufptr, uint32_t size)
         putHeader (&file);
     }
 
-#if 0
-    return (putDataItem (pPos, &file));
-#endif
+    if (fileState == -1)
+        return (1);
+    else
+        return 0;
 }
 
+
+
+#warning "implement file-open and periodic write functionality"
 
 
 /* find the next name that does not yet exist as file on the SD card;
@@ -400,7 +320,7 @@ static uint32_t  getNextFileID (void)
     found = 0;
     while (!found)
     {
-        sprintf (tBuffer, "%s%0d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
+        sprintf (tBuffer, "%s%02d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
         r = f_open (&F1, tBuffer, FA_READ);
         /* if already exists, close and try next */
         if (r == FR_OK)
@@ -429,7 +349,7 @@ static uint32_t  getNextFileID (void)
  */
 static uint32_t  openOutputFile (uint32_t curID, FIL *pFile)
 {
-    sprintf (tBuffer, "%s%04d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
+    sprintf (tBuffer, "%s%02d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
     return (f_open (pFile, (const char *) tBuffer, FA_WRITE));
 }
 
@@ -454,25 +374,32 @@ static uint32_t  putHeader (FIL *pFile)
 
 
 /* write a data item to the output (SD card file);
- * parameter is the current sensitivity value;
+ * parameter is the current data value and the file pointer;
  * return value is a success/error message from the file system
  * (0 = o.k; 1..n = error)
  */
-#if 0
-static uint32_t  putDataItem (struct GPS_Position *pPos, FIL *pFile)
-{
-    uint32_t  ret, bCnt = 0;
 
-    sprintf (tbuffer, "%s,%.4f,%.4f,%.4f\n", pPos->m_szTime, pPos->m_fLongitude, pPos->m_fLatitude, pPos->m_fHeight);
-    ret = f_write (pFile, tbuffer, strlen(tbuffer), (UINT *) &bCnt);
-    if (ret == 0)
+static uint32_t  putDataItem (uint16_t data, FIL *pFile)
+{
+    uint32_t         ret, bCnt = 0;
+    char             lbuf[16];
+    static uint16_t  wcount = 0;
+
+    sprintf (lbuf,"%hX\n", data);
+    ret = f_write (pFile, lbuf, strlen(lbuf), (UINT *) &bCnt);
+    if (ret != 0)
+        return (ret);
+
+    // do a file sync once in a while ...
+    wcount++;
+    if (wcount >= FSYNC_SIZE)
     {
         f_sync (pFile);
-        return 0;
+        wcount = 0;
     }
-
-    return 1;
+    return 0;
 }
-#endif
+
+
 
 /*************************** End of file ****************************/
