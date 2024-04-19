@@ -20,11 +20,12 @@
 **********************************************************************
 *
 * pin usage to connect the BMP280 module:
+*  SPI      F407 GPIO    KY052
 * ---------------------------------------
-#  SCK        PB.13
-#  MOSI       PB.15
-#  MISO       PB.14
-#  SS         PB.12
+#  SCK        PB.13      (SCL)
+#  MOSI       PB.15      (SDA)
+#  MISO       PB.14      (SDO)
+#  SS         PB.12      (CSB)
 *
 */
 
@@ -110,7 +111,7 @@ int  main (void)
 
     i = 0;
     RCC_GetClocksFreq (&RCC_Clocks);
-    SysTick_Config (RCC_Clocks.HCLK_Frequency / 100);  /* 100 => <10ms-tick> */
+    SysTick_Config (RCC_Clocks.HCLK_Frequency / 150);  /* 100 => <10ms-tick> */
 
     /* init Discovery LEDs and user button */
     initF4LEDsButtons ();
@@ -119,7 +120,8 @@ int  main (void)
     if (STM_EVAL_PBGetState (BUTTON_USER))
         sysMode = DEV_STATUS_CALIBRATE;
 
-    delay (50);
+    // init the LCD display; wait 15 ticks (100ms) to settle before
+    tdelay (15);
     STM32f4_Discovery_LCD_Init();
     LCD_Clear (LCD_COLOR_BLACK);
     LCD_SetBackColor (LCD_COLOR_BLACK);
@@ -303,9 +305,6 @@ static uint32_t   openDataFile (void)
         return 0;
 }
 
-
-
-#warning "implement file-open and periodic write functionality"
 
 
 /* find the next name that does not yet exist as file on the SD card;
