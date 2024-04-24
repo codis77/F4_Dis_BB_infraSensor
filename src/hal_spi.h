@@ -20,7 +20,7 @@ typedef unsigned char  bool;
  */
 
 ///> setup
-void      delay     (uint16_t time);
+void      usdelay     (uint16_t time);
 
 ///> SPI functions
 uint8_t   spi_send  (uint8_t tx);

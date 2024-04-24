@@ -40,6 +40,8 @@
 #include "hal_spi.h"
 #include "ff.h"
 
+#define _HW_TEST_
+
 /* external variables ---------------------------*/
 
 /* variables ------------------------------------*/
@@ -117,8 +119,10 @@ int  main (void)
     initF4LEDsButtons ();
     STM_EVAL_LEDOn (LED4);    /// green LED, main init done
 
+//  STM_EVAL_LEDOn (LED6);    // blue LED on
     if (STM_EVAL_PBGetState (BUTTON_USER))
         sysMode = DEV_STATUS_CALIBRATE;
+//  STM_EVAL_LEDOff (LED6);    // blue LED on
 
     // init the LCD display; wait 15 ticks (100ms) to settle before
     tdelay (15);
@@ -228,6 +232,13 @@ void  tdelay (uint16_t ticks)
     while (toDelay > 0);
 }
 
+
+/* a delay function the Disco LCD code uses
+ */
+void  delay (uint32_t  count)
+{
+    tdelay ((uint16_t) count);
+}
 
 
 /* process the sample item;

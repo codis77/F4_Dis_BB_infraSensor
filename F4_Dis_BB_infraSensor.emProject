@@ -56,6 +56,15 @@
     </folder>
     <folder Name="Source Files">
       <configuration Name="Common" filter="c;cpp;cxx;cc;h;s;asm;inc" />
+      <folder Name="inc">
+        <file file_name="inc/stm32f4xx.h" />
+        <file file_name="inc/stm32f4xx_conf.h" />
+        <file file_name="inc/system_stm32f4xx.h" />
+      </folder>
+      <folder Name="sensor">
+        <file file_name="sensor/bmp280.c" />
+        <file file_name="sensor/bmp280.h" />
+      </folder>
       <folder Name="SPL">
         <folder Name="inc">
           <file file_name="SPL/inc/misc.h" />
@@ -89,20 +98,13 @@
           <file file_name="SPL/src/stm32f4xx_usart.c" />
         </folder>
       </folder>
-      <folder Name="inc">
-        <file file_name="inc/stm32f4xx.h" />
-        <file file_name="inc/stm32f4xx_conf.h" />
-        <file file_name="inc/system_stm32f4xx.h" />
-      </folder>
-      <folder Name="sensor">
-        <file file_name="sensor/bmp280.c" />
-        <file file_name="sensor/bmp280.h" />
-      </folder>
       <folder Name="src">
         <folder Name="Discovery">
           <file file_name="src/F4_Dis/fonts.c" />
           <file file_name="src/F4_Dis/fonts.h" />
-          <file file_name="src/F4_Dis/lcd_log.c" />
+          <file file_name="src/F4_Dis/lcd_log.c">
+            <configuration Name="Debug" build_exclude_from_build="Yes" />
+          </file>
           <file file_name="src/F4_Dis/lcd_log.h" />
           <file file_name="src/F4_Dis/lcd_log_conf.h" />
           <file file_name="src/F4_Dis/stm32f4_discovery.c" />
@@ -143,10 +145,10 @@
     </folder>
     <folder Name="System Files">
       <file file_name="SEGGER_THUMB_Startup.s" />
-      <file file_name="STM32F4xx/Source/STM32F4xx_Startup.s" />
       <file file_name="STM32F4xx/Source/stm32f407xx_Vectors.s">
         <configuration Name="Common" file_type="Assembly" />
       </file>
+      <file file_name="STM32F4xx/Source/STM32F4xx_Startup.s" />
     </folder>
   </project>
 </solution>

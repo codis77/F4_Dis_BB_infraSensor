@@ -332,32 +332,37 @@ void  STM32f4_Discovery_LCD_Init (void)
     LCD_CtrlLinesConfig();    /* Configure the LCD Control pins */
     LCD_FSMCConfig();         /* Configure the FSMC Parallel interface */
 
-    _delay_(5);
+    _delay_(15);
 
     /* Reset LCD */
     GPIO_ResetBits (LCD_RST_PORT, LCD_RST_PIN);
-    _delay_(10);
+    _delay_(20);
     GPIO_SetBits (LCD_RST_PORT, LCD_RST_PIN);
 
     /* Enter sleep mode (if we are not already there).*/
+    _delay_(10);
     LCD_WriteReg (SSD2119_SLEEP_MODE_1_REG, 0x0001);
 
     /* Set initial power parameters. */
+    _delay_(10);
     LCD_WriteReg (SSD2119_PWR_CTRL_5_REG, 0x00B2);
     LCD_WriteReg (SSD2119_VCOM_OTP_1_REG, 0x0006);
 
     /* Start the oscillator.*/
+    _delay_(10);
     LCD_WriteReg (SSD2119_OSC_START_REG, 0x0001);
 
     /* Set pixel format and basic display orientation (scanning direction).*/
+    _delay_(10);
     LCD_WriteReg (SSD2119_OUTPUT_CTRL_REG, 0x30EF);
     LCD_WriteReg (SSD2119_LCD_DRIVE_AC_CTRL_REG, 0x0600);
 
     /* Exit sleep mode.*/
     LCD_WriteReg (SSD2119_SLEEP_MODE_1_REG, 0x0000);
-    _delay_ (5);
+    _delay_ (15);
 
     /* Configure pixel color format and MCU interface parameters.*/
+    _delay_(10);
     LCD_WriteReg (SSD2119_ENTRY_MODE_REG, ENTRY_MODE_DEFAULT);
 
     /* Set analog parameters */
@@ -368,9 +373,11 @@ void  STM32f4_Discovery_LCD_Init (void)
     LCD_WriteReg (SSD2119_DISPLAY_CTRL_REG, 0x0033);
 
     /* Set VCIX2 voltage to 6.1V.*/
-    LCD_WriteReg (SSD2119_PWR_CTRL_2_REG, 0x0005);
+     _delay_(10);
+   LCD_WriteReg (SSD2119_PWR_CTRL_2_REG, 0x0005);
 
     /* Configure gamma correction.*/
+    _delay_(10);
     LCD_WriteReg (SSD2119_GAMMA_CTRL_1_REG, 0x0000);
     LCD_WriteReg (SSD2119_GAMMA_CTRL_2_REG, 0x0303);
     LCD_WriteReg (SSD2119_GAMMA_CTRL_3_REG, 0x0407);
@@ -1299,11 +1306,13 @@ void  LCD_FillPolyLine (pPoint Points, uint16_t PointCount)
   * @param  nCount: specifies the delay time length.
   * @retval None
   */
+#if 0
 static void  delay (__IO uint32_t nCount)
 {
     __IO uint32_t  index = 0;
     for (index=(10000*nCount); index!=0; index--);
 }
+#endif
 #endif /* USE_Delay*/
 
 /**

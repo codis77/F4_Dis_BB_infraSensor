@@ -68,4 +68,8 @@
 #define CUR_HEIGHT_X            0               // current height on display -> x
 #define CUR_HEIGHT_Y            312             // current height on display -> y
 
+/* a function used by the LCD code
+ */
+void  delay (uint32_t  count);
+
 // #define _HW_TEST_
