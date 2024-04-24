@@ -28,7 +28,7 @@
 
 
 ///> setup
-void                    delay     (uint16_t time);
+void                    usdelay   (uint16_t time);
 
 ///> pin functions
 static void inline      setSS     (uint8_t state);
@@ -161,6 +161,7 @@ uint8_t  spi_send (uint8_t tx)
     // write, and wait for the transfer to finish before read-back
     SPI2->DR = tx;
     while (!(SPI2->SR & SPI_I2S_FLAG_RXNE));
+//  while ((SPI2->SR & SPI_I2S_FLAG_BSY));
     rx = SPI2->DR;
     return (rx);
 }
@@ -259,7 +260,7 @@ uint32_t  readData  (uint8_t regAddr, uint8_t bytes)
 /* ad hoc implementation of a short delay;
  * TODO: might need to check the timing !
  */
-void  delay (uint16_t  delayTime)
+void  usdelay (uint16_t  delayTime)
 {
     volatile int  i;
 
