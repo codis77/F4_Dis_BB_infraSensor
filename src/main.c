@@ -53,12 +53,14 @@ volatile uint32_t     txTimer             = 0;
 uint16_t              calValue            = 0;   /* calibration value */
 uint8_t               sysMode             = 0;   /* system state      */
 uint8_t               btnState            = 0;
-uint16_t              buffer0[DB_SIZE]    = {0};
-uint16_t              buffer1[DB_SIZE]    = {0};
-volatile uint16_t    *bufPtr              = buffer0;  /* transmit buffer pointer */
-volatile uint16_t    *smpPtr              = buffer0;  /* sample buffer pointer   */
-uint8_t               currentBufIndex     = 0;
-uint8_t               currentSmpIndex     = 0;
+#if 0  // double-buffer method not used ...
+  uint16_t            buffer0[DB_SIZE]    = {0};
+  uint16_t            buffer1[DB_SIZE]    = {0};
+  volatile uint16_t  *bufPtr              = buffer0;  /* transmit buffer pointer */
+  volatile uint16_t  *smpPtr              = buffer0;  /* sample buffer pointer   */
+  uint8_t             currentBufIndex     = 0;
+  uint8_t             currentSmpIndex     = 0;
+#endif
 uint8_t               txBuffer            = 0;
 uint8_t               SmplBuffer          = 0;
 
@@ -81,6 +83,17 @@ static int32_t        fileState = 0;
 static uint32_t       FileID    = 0;
 static FIL            file;
 
+/// --- graphics related ---
+#define GFX_AVGBUF_SIZE             8   // buffer for Gfx averaging
+#define GFX_AVG                     3   // number of data items per gfx point
+static uint32_t       dataCount   = 0;
+static uint16_t       gfxCalValue = 0;
+static uint16_t       fgColor     = LCD_COLOR_WHITE;
+static uint16_t       bgColor     = LCD_COLOR_BLACK;
+static uint8_t        curGX       = 0;
+static uint16_t       avBuffer[GFX_AVGBUF_SIZE];
+static uint16_t       avIndex     = 0;
+
 
 /* function prototypes --------------------------
  */
@@ -99,7 +112,7 @@ static uint32_t  getNextFileID       (void);
 static uint32_t  putHeader           (FIL *pFile);
 static uint32_t  openOutputFile      (uint32_t curID, FIL *pFile);
 static uint32_t  putDataItem         (uint16_t data, FIL *pFile);
-
+static void      gfxUpdate           (uint16_t data);
 
 
 /* -------- main() --------
@@ -128,8 +141,8 @@ int  main (void)
     tdelay (15);
     STM32f4_Discovery_LCD_Init();
     LCD_Clear (LCD_COLOR_BLACK);
-    LCD_SetBackColor (LCD_COLOR_BLACK);
-    LCD_SetTextColor (LCD_COLOR_WHITE);
+    LCD_SetBackColor (bgColor);
+    LCD_SetTextColor (fgColor);
 
     LCD_DisplayStringLine (LINE(HEADER_LINE), (uint8_t *) DbgMsg);
     LCD_DisplayStringLine (LINE(CUR_POS_LINE), (uint8_t *) AtMsg);
@@ -410,6 +423,82 @@ static uint32_t  putDataItem (uint16_t data, FIL *pFile)
     return 0;
 }
 
+
+
+/* initialize internal graphics-related variables,
+ * and draw the diagram frame
+ */
+static void  initGfx (void)
+{
+    uint32_t  i;
+
+    dataCount   = 0;
+    gfxCalValue = 0;
+    avIndex     = 0;
+    for (i=0; i<GFX_AVGBUF_SIZE; i++)
+        avBuffer[i] = 0;
+
+    // draw the diagram frame
+    fgColor = AXIS_COLOR;
+    LCD_SetColors (fgColor, bgColor);
+    LCD_DrawLine (X_AXIS_START, Y_AXIS_MID, X_AXIS_END - X_AXIS_START, LCD_DIR_HORIZONTAL);
+    LCD_DrawLine (X_AXIS_START, Y_AXIS_HIGH, Y_AXIS_LOW - Y_AXIS_HIGH, LCD_DIR_VERTICAL);
+}
+
+
+
+/* update the graphics display
+ */
+static void  gfxUpdate (uint16_t data)
+{
+    uint32_t  dg;
+    int16_t   y;
+
+    // set calibration value upon first data item
+    if (dataCount == 0)
+    {
+        if (calValue == 0)  // no calibration, just use first value ...
+            gfxCalValue = data;
+        else
+            gfxCalValue = calValue;
+    }
+
+    // average over <n> data
+    avBuffer[avIndex++] = data;
+    if (avIndex < GFX_AVG)
+        return;
+    for (dg=0, y=0; y<GFX_AVG; y++)
+        dg += avBuffer[y];
+    dg /= GFX_AVG;
+
+    // draw the data
+    // reset x index on last item of cycle
+    if (((dataCount+1) % GFX_CYCLE) == 0)
+        curGX = 0;
+
+    // set x drawing index
+    curGX++;
+
+    // overpaint previous cursor/data line
+    fgColor = bgColor;
+    LCD_SetColors (fgColor, bgColor);
+    LCD_DrawLine (curGX, Y_AXIS_HIGH, Y_AXIS_LOW - Y_AXIS_HIGH, LCD_DIR_VERTICAL);
+
+    // draw data
+    y = Y_AXIS_MID - dg;  // perhaps add some adaptive scaling here later ...
+    if (y < Y_AXIS_HIGH)
+        y = Y_AXIS_HIGH;
+    else if (y > Y_AXIS_LOW)
+        y = Y_AXIS_LOW;
+    fgColor = DATA_COLOR;
+    LCD_SetColors (fgColor, bgColor);
+    LCD_DrawLine (curGX, Y_AXIS_MID, y, LCD_DIR_VERTICAL);
+
+    // new cursor line
+    fgColor = CURSOR_COLOR;
+    LCD_SetColors (fgColor, bgColor);
+    LCD_DrawLine (curGX + 1,Y_AXIS_MID - GFX_CURSOR_SIZE, 2 * GFX_CURSOR_SIZE, LCD_DIR_VERTICAL);
+}
 
 
 /*************************** End of file ****************************/

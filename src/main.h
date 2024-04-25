@@ -62,11 +62,17 @@
 #define HEADER_LINE             0
 #define SYSMOD_LINE             3               // system mode display line
 #define ERR_MSG_LINE            12              // error message display line
-#define CUR_POS_X               0               // current position on display -> x
-#define CUR_POS_Y               295             // current position on display -> y
 #define CUR_POS_LINE            29
-#define CUR_HEIGHT_X            0               // current height on display -> x
-#define CUR_HEIGHT_Y            312             // current height on display -> y
+#define X_AXIS_START            10
+#define X_AXIS_END              300
+#define Y_AXIS_LOW              220
+#define Y_AXIS_HIGH             20
+#define Y_AXIS_MID              120
+#define GFX_CURSOR_SIZE         20
+#define GFX_CYCLE               (X_AXIS_END - X_AXIS_START - 1)
+#define AXIS_COLOR              LCD_COLOR_BLUE
+#define DATA_COLOR              LCD_COLOR_GREEN
+#define CURSOR_COLOR            LCD_COLOR_YELLOW
 
 /* a function used by the LCD code
  */
