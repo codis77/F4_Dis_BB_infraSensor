@@ -112,6 +112,7 @@ static uint32_t  getNextFileID       (void);
 static uint32_t  putHeader           (FIL *pFile);
 static uint32_t  openOutputFile      (uint32_t curID, FIL *pFile);
 static uint32_t  putDataItem         (uint16_t data, FIL *pFile);
+static void      initGfx             (void);
 static void      gfxUpdate           (uint16_t data);
 
 
@@ -184,6 +185,9 @@ int  main (void)
         LCD_DisplayStringLine (LINE(SYSMOD_LINE), (uint8_t *) pm);
     }
 
+    // init data display graphics
+    initGfx ();
+
     ///> main loop; read pressure value regularly
     do
     {
@@ -193,6 +197,7 @@ int  main (void)
             data = currentAPvalue;    // get value from interrupt handler
             runChain = 0;
             putItem (data);
+            gfxUpdate (data);
             STM_EVAL_LEDOff (LED6);   // blue LED off
         }
     }
