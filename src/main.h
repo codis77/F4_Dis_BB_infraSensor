@@ -70,6 +70,8 @@
 #define Y_AXIS_MID              120
 #define GFX_CURSOR_SIZE         20
 #define GFX_CYCLE               (X_AXIS_END - X_AXIS_START - 1)
+#define GFX_COLOR_TEXT          LCD_COLOR_WHITE
+#define GFX_COLOR_BACKGOUND     LCD_COLOR_BLACK
 #define AXIS_COLOR              LCD_COLOR_BLUE
 #define DATA_COLOR              LCD_COLOR_GREEN
 #define CURSOR_COLOR            LCD_COLOR_YELLOW

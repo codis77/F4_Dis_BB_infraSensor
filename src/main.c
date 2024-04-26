@@ -88,9 +88,9 @@ static FIL            file;
 #define GFX_AVG                     3   // number of data items per gfx point
 static uint32_t       dataCount   = 0;
 static uint16_t       gfxCalValue = 0;
-static uint16_t       fgColor     = LCD_COLOR_WHITE;
-static uint16_t       bgColor     = LCD_COLOR_BLACK;
-static uint8_t        curGX       = 0;
+static uint16_t       fgColor     = GFX_COLOR_TEXT;
+static uint16_t       bgColor     = GFX_COLOR_BACKGOUND;
+static uint16_t       curGX       = 0;
 static uint16_t       avBuffer[GFX_AVGBUF_SIZE];
 static uint16_t       avIndex     = 0;
 
@@ -467,11 +467,13 @@ static void  gfxUpdate (uint16_t data)
         else
             gfxCalValue = calValue;
     }
+    dataCount++;
 
     // average over <n> data
     avBuffer[avIndex++] = data;
     if (avIndex < GFX_AVG)
         return;
+    avIndex = 0;
     for (dg=0, y=0; y<GFX_AVG; y++)
         dg += avBuffer[y];
     dg /= GFX_AVG;
@@ -485,9 +487,8 @@ static void  gfxUpdate (uint16_t data)
     curGX++;
 
     // overpaint previous cursor/data line
-    fgColor = bgColor;
-    LCD_SetColors (fgColor, bgColor);
-    LCD_DrawLine (curGX, Y_AXIS_HIGH, Y_AXIS_LOW - Y_AXIS_HIGH, LCD_DIR_VERTICAL);
+    LCD_SetColors (GFX_COLOR_BACKGOUND, bgColor);
+    LCD_DrawLine (X_AXIS_START + curGX, Y_AXIS_HIGH, Y_AXIS_LOW - Y_AXIS_HIGH, LCD_DIR_VERTICAL);
 
     // draw data
     y = Y_AXIS_MID - dg;  // perhaps add some adaptive scaling here later ...
@@ -497,12 +498,14 @@ static void  gfxUpdate (uint16_t data)
         y = Y_AXIS_LOW;
     fgColor = DATA_COLOR;
     LCD_SetColors (fgColor, bgColor);
-    LCD_DrawLine (curGX, Y_AXIS_MID, y, LCD_DIR_VERTICAL);
+    LCD_DrawLine (X_AXIS_START + curGX, Y_AXIS_MID, y, LCD_DIR_VERTICAL);
 
-    // new cursor line
+    // new cursor line (unless for the very last)
+    if (curGX >= GFX_CYCLE)
+        return;
     fgColor = CURSOR_COLOR;
     LCD_SetColors (fgColor, bgColor);
-    LCD_DrawLine (curGX + 1,Y_AXIS_MID - GFX_CURSOR_SIZE, 2 * GFX_CURSOR_SIZE, LCD_DIR_VERTICAL);
+    LCD_DrawLine (X_AXIS_START + curGX + 1, Y_AXIS_MID - GFX_CURSOR_SIZE, 2 * GFX_CURSOR_SIZE, LCD_DIR_VERTICAL);
 }
 
 
