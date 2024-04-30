@@ -32,6 +32,9 @@ extern volatile uint8_t     devStatus;
 extern volatile uint16_t    currentAPvalue;
 extern volatile uint32_t    runChain;
 
+extern volatile char        sBuffer[32];
+extern volatile uint8_t     txIndex;
+
 /* Private variables ---------------------------------------------------------*/
 
 
@@ -190,11 +193,11 @@ void  USART3_IRQHandler(void)
 
 
 
+#if 0
 /* handler for the USART6 interrupt (console)
  */
 void  USART6_IRQHandler(void)
 {
-#if 0
     volatile uint32_t  databyte;
 
     /* Datenbyte aus dem Empfangsregister lesen;
@@ -220,5 +223,63 @@ void  USART6_IRQHandler(void)
         databyte = USART6->SR;
         databyte = USART6->DR;
     }
-#endif
 }
+#endif
+
+
+#define  USART_ERR_MASK     0x0000000F    // error flag mask for UART->SR register (ORE|NF|FE|PE)
+
+void  USART6_IRQHandler(void)
+{
+    volatile uint8_t  databyte;
+
+    /* TX interrupt; send next char, or disable interrupt when ready */
+    if (USART_GetITStatus (USART6, USART_IT_TXE) != RESET)
+    {
+        // check if we reached the last character, to disable the TX interrupt
+        if (sBuffer[txIndex+1] == 0)
+            USART_ITConfig (USART6, USART_IT_TXE, DISABLE);
+
+        // push next character
+        USART6->DR = sBuffer[txIndex++];
+    }
+
+    /*  RNXE interrupt */
+    if (USART_GetITStatus (USART6, USART_IT_RXNE) != RESET)
+    {
+        databyte = (USART6->DR & 0x00FF);
+        // no reception expected - yet
+    }
+
+    /* error flag set; try clearing by reading SR and DR */
+    if (USART6->SR & USART_ERR_MASK)
+    {
+        databyte = USART6->SR;
+        databyte = USART6->DR;
+    }
+}
+
+
+#if 0  // possibly useful later; no timing overlap expected yet
+/** a helper function to copy UART TX data for the interrupt context;
+  * enable the TX interrupt to start the send process
+  * returns the number of copied byte, which is 0 if busy or out-of-bound
+  */
+uint32_t  setTxData (uint32_t size, uint8_t *pData)
+{
+    if ((txIndex != TX_INDEX_DONE) || (size >= TX_BUF_SIZE))
+        return 0;
+
+    for (txIndex = 0; txIndex < size; txIndex++)
+        txBuffer[txIndex] = pData[txIndex];
+
+    txIndex = 0;  // re-init
+    txSize  = size;
+
+   // enable Transmission Complete interrupt, and set first character
+    USART_ITConfig (USART6, USART_IT_TC, ENABLE);
+    USART6->DR = txBuffer[0];
+
+    return size;  // all done
+}
+#endif

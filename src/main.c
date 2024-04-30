@@ -50,8 +50,9 @@ volatile uint32_t     toDelay             = 0;   /* Timeout Delay, in ms    */
 volatile uint16_t     currentAPvalue      = 0;   /* current pressure sample */
 volatile uint32_t     runChain            = 0;
 volatile uint32_t     txTimer             = 0;
-uint16_t              calValue            = 0;   /* calibration value */
-uint8_t               sysMode             = 0;   /* system state      */
+uint16_t              calValue            = 0;   /* calibration value      */
+uint16_t              serialActive        = 0;   /* activate serial output */
+uint8_t               sysMode             = 0;   /* system state           */
 uint8_t               btnState            = 0;
 #if 0  // double-buffer method not used ...
   uint16_t            buffer0[DB_SIZE]    = {0};
@@ -61,7 +62,8 @@ uint8_t               btnState            = 0;
   uint8_t             currentBufIndex     = 0;
   uint8_t             currentSmpIndex     = 0;
 #endif
-uint8_t               txBuffer            = 0;
+char                  sBuffer[32]         = {0};  // string buffer for some UART operations
+uint8_t               txIndex             = 0;    // associated index
 uint8_t               SmplBuffer          = 0;
 
 static uint8_t        msgBuffer[MSG_SIZE] = {0};
@@ -112,8 +114,12 @@ static uint32_t  getNextFileID       (void);
 static uint32_t  putHeader           (FIL *pFile);
 static uint32_t  openOutputFile      (uint32_t curID, FIL *pFile);
 static uint32_t  putDataItem         (uint16_t data, FIL *pFile);
+
 static void      initGfx             (void);
 static void      gfxUpdate           (uint16_t data);
+
+static void      initUART6           (void);
+static void      sendDataItem        (uint16_t data);
 
 
 /* -------- main() --------
@@ -133,10 +139,16 @@ int  main (void)
     initF4LEDsButtons ();
     STM_EVAL_LEDOn (LED4);    /// green LED, main init done
 
-//  STM_EVAL_LEDOn (LED6);    // blue LED on
+    // initialize serial output; possibly used
+    initUART6 ();
+
+    // check user button press at startup
     if (STM_EVAL_PBGetState (BUTTON_USER))
+#ifdef _AUTO_CALIBRATION_
+        serialActive = 1;
+#else
         sysMode = DEV_STATUS_CALIBRATE;
-//  STM_EVAL_LEDOff (LED6);    // blue LED on
+#endif
 
     // init the LCD display; wait 15 ticks (100ms) to settle before
     tdelay (15);
@@ -151,7 +163,7 @@ int  main (void)
     // setup SPI for the sensor
     setup_spi ();
 
-    // init the sensor
+    // init the sensor; failure is application-critical
     ret = initSensor (BMP280_CONFIG_MODE_0);
     if (ret != BMP280_ID)
     {
@@ -175,7 +187,12 @@ int  main (void)
     {
         sprintf ((char *) msgBuffer, "SD card file failure; no storage !");
         LCD_DisplayStringLine (LINE(ERR_MSG_LINE), msgBuffer);
+        serialActive = 1;
     }
+
+#ifdef _AUTO_CALIBRATION_
+    sysMode = DEV_STATUS_CALIBRATE;
+#endif
 
     devStatus = DEV_STATUS_RUN;
 
@@ -280,7 +297,11 @@ void  putItem (uint16_t data)
         }
     }
     else
+    {
         (void) putDataItem (data, &file);
+        if (serialActive)
+            sendDataItem (data);
+    }
 }
 
 
@@ -306,7 +327,6 @@ static void  eLoop (void)
  */
 
 static char   tBuffer[80] = {0};  // string buffer for some file operations
-
 
 /* open the SD card file for writing the sample data;
  * use a fixed file name base with a running 2-digit number;
@@ -430,6 +450,23 @@ static uint32_t  putDataItem (uint16_t data, FIL *pFile)
 
 
 
+/* initialize the transmission of a data item via serial line;
+ * function is executed in "real time", and supposedly finishes
+ * long before the 6.6ms sample cycle (ca. 10Byte/ms throughput);
+ * otherwise Tx data could overlap / be corrupted;
+ */
+static void  sendDataItem (uint16_t data)
+{
+    sprintf (sBuffer, "%d\n", data);
+
+    // initialize UART TXE interrupt, send first character
+    USART_ITConfig (USART6, USART_IT_TXE, ENABLE);
+    txIndex    = 1;
+    USART6->DR = sBuffer[0];
+}
+
+
+
 /* initialize internal graphics-related variables,
  * and draw the diagram frame
  */
@@ -506,6 +543,63 @@ static void  gfxUpdate (uint16_t data)
     fgColor = CURSOR_COLOR;
     LCD_SetColors (fgColor, bgColor);
     LCD_DrawLine (X_AXIS_START + curGX + 1, Y_AXIS_MID - GFX_CURSOR_SIZE, 2 * GFX_CURSOR_SIZE, LCD_DIR_VERTICAL);
+}
+
+
+
+/* Initialize the USART6 (115200,8,n,1,none) for the console;
+ * as used on the STM32F4DIS_BB board:
+ *   PC6  =>  usart6.TX
+ *   PC7  =>  usart6.RX
+ */
+static void  initUART6 (void)
+{
+    GPIO_InitTypeDef   GPIO_InitStructure;
+    USART_InitTypeDef  USART_InitStructure;
+    NVIC_InitTypeDef   NVIC_InitStructure;
+
+    RCC_AHB1PeriphClockCmd (RCC_AHB1Periph_GPIOC, ENABLE);      // configure clock for GPIO
+    RCC_APB2PeriphClockCmd (RCC_APB2Periph_USART6, ENABLE);     // configure clock for USART
+
+    GPIO_PinAFConfig (GPIOC, GPIO_PinSource6, GPIO_AF_USART6);  // configure AF
+    GPIO_PinAFConfig (GPIOC, GPIO_PinSource7, GPIO_AF_USART6);
+
+    GPIO_StructInit (&GPIO_InitStructure);
+    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_6;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz;
+    GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF;
+    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+    GPIO_Init (GPIOC, &GPIO_InitStructure);
+
+    GPIO_StructInit(&GPIO_InitStructure);
+    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_7;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz;
+    GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF;
+    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+    GPIO_Init (GPIOC, &GPIO_InitStructure);
+
+    // configure UART
+    USART_InitStructure.USART_BaudRate            = 115200;
+    USART_InitStructure.USART_WordLength          = USART_WordLength_8b;
+    USART_InitStructure.USART_StopBits            = USART_StopBits_1;
+    USART_InitStructure.USART_Parity              = USART_Parity_No;
+    USART_InitStructure.USART_Mode                = USART_Mode_Tx | USART_Mode_Rx;
+    USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+    USART_Init (USART6, &USART_InitStructure);
+    USART_Cmd (USART6, ENABLE);
+
+    /* parametrize USART6-Interrupt */
+    NVIC_InitStructure.NVIC_IRQChannel            = USART6_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelCmd         = ENABLE;
+    NVIC_Init (&NVIC_InitStructure);
+
+    /* Interrupt at reception and receive errors */
+#if 0
+    USART_ITConfig (USART6, USART_IT_RXNE, ENABLE);
+    USART_ITConfig (USART6, USART_IT_ERR, ENABLE);
+#endif
+    /* transmit interrupt enabled on demand */
 }
 
 
