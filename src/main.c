@@ -120,6 +120,7 @@ static void      gfxUpdate           (uint16_t data);
 
 static void      initUART6           (void);
 static void      sendDataItem        (uint16_t data);
+static void      sendHeader          (void);
 
 
 /* -------- main() --------
@@ -204,6 +205,9 @@ int  main (void)
 
     // init data display graphics
     initGfx ();
+
+    if (serialActive == 1)
+        sendHeader ();
 
     ///> main loop; read pressure value regularly
     do
@@ -600,6 +604,25 @@ static void  initUART6 (void)
     USART_ITConfig (USART6, USART_IT_ERR, ENABLE);
 #endif
     /* transmit interrupt enabled on demand */
+}
+
+
+static void  sendHeader (void)
+{
+    int  sl, index;
+
+    sl = index = 0;
+
+    sl = sprintf (sBuffer, "#%infra%d @%150\n", PROTOCOL_VERSION);
+    if (sl <= 0)  // an unlikely sprintf() error
+        return;
+
+    // send string in a busy loop
+    while (index < sl)
+    {
+        USART6->DR = sBuffer[sl];
+        while ((USART6->SR & USART_FLAG_TXE)==0);
+    }
 }
 
 

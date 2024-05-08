@@ -4,6 +4,8 @@
 #define SW_VERSION_MAJOR        0
 #define SW_VERSION_MINOR        3
 
+#define PROTOCOL_VERSION        1
+
 // enable serial data output (UART 1 / PC4 + PC5, 115200 baud)
 #define _SERIAL_OUTPUT_
 
