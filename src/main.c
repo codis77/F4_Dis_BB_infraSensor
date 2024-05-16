@@ -415,7 +415,7 @@ static uint32_t  putHeader (FIL *pFile)
 {
     uint32_t  bCnt, ret = 0;
 
-    sprintf (tBuffer, "#! -Air Pressure / Infrasound Logger V%d.%d (c)fm ---\n", SW_VERSION_MAJOR, SW_VERSION_MINOR);
+    sprintf (tBuffer, "#! -Air Pressure / Infrasound Logger V%d.%d (c)fm ---\n# @150\n", SW_VERSION_MAJOR, SW_VERSION_MINOR);
     ret  = f_write (pFile, tBuffer, strlen(tBuffer), (UINT *) &bCnt);
     if (ret == 0)
         f_sync (pFile);
@@ -613,7 +613,7 @@ static void  sendHeader (void)
 
     sl = index = 0;
 
-    sl = sprintf (sBuffer, "#%infra%d @%150\n", PROTOCOL_VERSION);
+    sl = sprintf (sBuffer, "#infra_%d @150\n", PROTOCOL_VERSION);
     if (sl <= 0)  // an unlikely sprintf() error
         return;
 
