@@ -607,6 +607,7 @@ static void  initUART6 (void)
 }
 
 
+
 static void  sendHeader (void)
 {
     int  sl, index;
@@ -620,7 +621,7 @@ static void  sendHeader (void)
     // send string in a busy loop
     while (index < sl)
     {
-        USART6->DR = sBuffer[sl];
+        USART6->DR = sBuffer[index++];
         while ((USART6->SR & USART_FLAG_TXE)==0);
     }
 }
