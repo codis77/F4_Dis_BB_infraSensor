@@ -7,7 +7,7 @@
 **  Environment : Atollic TrueSTUDIO(R)
 **                STMicroelectronics STM32F4xx Standard Peripherals Library
 **  Distribution: The file is distributed as is, without any warranty
-**                of any kind. (c)Copyright Atollic AB.
+**                of any kind.
 *****************************************************************************
 */
 
@@ -152,11 +152,7 @@ void  ADC_IRQHandler (void)
 }
 
 
-/* handler for the USART3 interrupt (GPS receiver)
- * a new sentence is only started (and characters stored), if the start-character is correct (NMEA_SENTENCE_ID);
- * if the terminator charactor is received, it is checked if the sentence is of the expected type (GPGGA);
- * if the type is correct AND the 'eval finished' flag 'eval_status' is set, the rcv_status is set accordingly;
- * if the 'eval finished' input flag is not set, the current buffer content is invalidated and reused immediately;
+/* handler for the USART3 interrupt
  */
 void  USART3_IRQHandler(void)
 {
@@ -164,7 +160,7 @@ void  USART3_IRQHandler(void)
     volatile uint32_t  databyte;
 
     if (USART_GetITStatus (USART3, USART_IT_RXNE) != RESET)
-        databyte = USART3->DR;       /* Empfangsbyte lesen; loescht das Interrupt flag */
+        databyte = USART3->DR;       /* read rx byte; clear the interrupt flag */
 
   #ifdef FAST_ERR_INT_HANDLING
     if (USART3->SR & UART_ERR_INT_MASK)
@@ -174,14 +170,14 @@ void  USART3_IRQHandler(void)
         databyte    = USART3->DR;
     }
   #else
-    /* Empfangszaehler inkrementieren, Fehlerflag setzen, Fehler-Interruptflag loeschen */
+    /* increment rx counter, set error flag, clear error interrupt flags */
     if ((USART_GetITStatus (USART3, USART_IT_ORE) != RESET) || (USART_GetITStatus (USART3, USART_IT_NE) != RESET))
     {
         databyte = USART3->SR;
         databyte = USART3->DR;
     }
 
-    /* Empfangszaehler inkrementieren, Fehlerflag setzen, Fehler-Interruptflag loeschen */
+    /* increment rx counter, set error flag, clear error interrupt flags */
     if ((USART_GetITStatus (USART3, USART_IT_FE) != RESET) || (USART_GetITStatus (USART3, USART_IT_PE) != RESET))
     {
         databyte = USART3->SR;
@@ -191,40 +187,6 @@ void  USART3_IRQHandler(void)
 #endif
 }
 
-
-
-#if 0
-/* handler for the USART6 interrupt (console)
- */
-void  USART6_IRQHandler(void)
-{
-    volatile uint32_t  databyte;
-
-    /* Datenbyte aus dem Empfangsregister lesen;
-     * hoeherwertige Bits liefern 0 (Referenzmanual); loescht das RNXE Interrupt-Flag */
-    if (USART_GetITStatus (USART6, USART_IT_RXNE) != RESET)
-    {
-        databyte = USART6->DR;
-        szConBuffer[ConBufCount++] = (uint8_t) databyte;
-        if (ConBufCount >= CON_BUFSIZE)
-            ConBufCount = 0;  /* wieder von vorn beginnen ... */
-    }
-
-    /* Empfangszaehler inkrementieren, Fehlerflag setzen, Fehler-Interruptflag loeschen */
-    else if ((USART_GetITStatus (USART6, USART_IT_ORE) != RESET) || (USART_GetITStatus (USART6, USART_IT_NE) != RESET))
-    {
-        databyte = USART6->SR;
-        databyte = USART6->DR;
-    }
-
-    /* Empfangszaehler inkrementieren, Fehlerflag setzen, Fehler-Interruptflag loeschen */
-    else if ((USART_GetITStatus (USART6, USART_IT_FE) != RESET) || (USART_GetITStatus (USART6, USART_IT_PE) != RESET))
-    {
-        databyte = USART6->SR;
-        databyte = USART6->DR;
-    }
-}
-#endif
 
 
 #define  USART_ERR_MASK     0x0000000F    // error flag mask for UART->SR register (ORE|NF|FE|PE)
@@ -238,7 +200,8 @@ void  USART6_IRQHandler(void)
     {
         // check if we reached the last character, i.e. next is '\0', to disable the TX interrupt
         if (sBuffer[txIndex+1] == 0)
-            USART_ITConfig (USART6, USART_IT_TXE, DISABLE);
+            USART6->CR1 &= ~USART_CR1_TXEIE;
+//          USART_ITConfig (USART6, USART_IT_TXE, DISABLE);
 
         // push next character
         USART6->DR = sBuffer[txIndex++];

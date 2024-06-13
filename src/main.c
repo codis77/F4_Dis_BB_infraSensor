@@ -323,10 +323,10 @@ static void  sendDataItem (uint16_t data)
 {
     sprintf (sBuffer, "%d\n", data);
 
-    // initialize UART TXE interrupt, send first character
-    USART_ITConfig (USART6, USART_IT_TXE, ENABLE);
-    txIndex    = 1;
-    USART6->DR = sBuffer[0];
+    // initialize UART TXE interrupt, and send first character
+    USART6->CR1 |= USART_CR1_TXEIE;
+    txIndex      = 1;
+    USART6->DR   = sBuffer[0];
 }
 
 
