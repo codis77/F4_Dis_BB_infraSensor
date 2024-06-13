@@ -27,6 +27,7 @@ static char   tBuffer[80] = {0};  // string buffer for some file operations
  */
 uint32_t   openDataFile (void)
 {
+#if 0
     uint32_t  i;
 
     if (fileState == 0)
@@ -43,6 +44,10 @@ uint32_t   openDataFile (void)
         return (1);
     else
         return 0;
+#else
+  #warning "openDataFile function disabled !"
+    return 1;
+#endif
 }
 
 
