@@ -236,7 +236,7 @@ void  USART6_IRQHandler(void)
     /* TX interrupt; send next char, or disable interrupt when ready */
     if (USART_GetITStatus (USART6, USART_IT_TXE) != RESET)
     {
-        // check if we reached the last character, to disable the TX interrupt
+        // check if we reached the last character, i.e. next is '\0', to disable the TX interrupt
         if (sBuffer[txIndex+1] == 0)
             USART_ITConfig (USART6, USART_IT_TXE, DISABLE);
 

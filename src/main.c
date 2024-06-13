@@ -38,6 +38,7 @@
 #include "stm32f4_discovery_lcd.h"
 #include "bmp280.h"
 #include "hal_spi.h"
+#include "sd_card.h"
 #include "ff.h"
 
 #define _HW_TEST_
@@ -54,14 +55,6 @@ uint16_t              calValue            = 0;   /* calibration value      */
 uint16_t              serialActive        = 0;   /* activate serial output */
 uint8_t               sysMode             = 0;   /* system state           */
 uint8_t               btnState            = 0;
-#if 0  // double-buffer method not used ...
-  uint16_t            buffer0[DB_SIZE]    = {0};
-  uint16_t            buffer1[DB_SIZE]    = {0};
-  volatile uint16_t  *bufPtr              = buffer0;  /* transmit buffer pointer */
-  volatile uint16_t  *smpPtr              = buffer0;  /* sample buffer pointer   */
-  uint8_t             currentBufIndex     = 0;
-  uint8_t             currentSmpIndex     = 0;
-#endif
 char                  sBuffer[32]         = {0};  // string buffer for some UART operations
 uint8_t               txIndex             = 0;    // associated index
 uint8_t               SmplBuffer          = 0;
@@ -80,14 +73,15 @@ static const int8_t   RxMsg[]             = "system in receive mode !";
 static const int8_t   CalMsg[]            = "calibrate system ...";
 
 /// --- SD card related ---
-static FATFS          fatfs;
-static int32_t        fileState = 0;
-static uint32_t       FileID    = 0;
-static FIL            file;
+FATFS                 fatfs;
+int32_t               fileState = 0;
+uint32_t              FileID    = 0;
+FIL                   file;
 
 /// --- graphics related ---
 #define GFX_AVGBUF_SIZE             8   // buffer for Gfx averaging
 #define GFX_AVG                     3   // number of data items per gfx point
+
 static uint32_t       dataCount   = 0;
 static uint16_t       gfxCalValue = 0;
 static uint16_t       fgColor     = GFX_COLOR_TEXT;
@@ -108,12 +102,6 @@ void             putItem             (uint16_t);
 void             writeItem           (void);
 void             writeBuffer         (uint8_t *str, uint8_t size);
 static uint16_t  getCalibrationValue (uint16_t *pBuffer, uint16_t items);
-
-static uint32_t  openDataFile        (void);
-static uint32_t  getNextFileID       (void);
-static uint32_t  putHeader           (FIL *pFile);
-static uint32_t  openOutputFile      (uint32_t curID, FIL *pFile);
-static uint32_t  putDataItem         (uint16_t data, FIL *pFile);
 
 static void      initGfx             (void);
 static void      gfxUpdate           (uint16_t data);
@@ -322,134 +310,6 @@ static void  eLoop (void)
         STM_EVAL_LEDOff (LED5);
         sysdelay (850);
     }
-}
-
-
-
-/* **************************************************************
- * ******************** SD card related code ********************
- */
-
-static char   tBuffer[80] = {0};  // string buffer for some file operations
-
-/* open the SD card file for writing the sample data;
- * use a fixed file name base with a running 2-digit number;
- * if no free name is found, force "1" as running number;
- * return 0 if everything went well;
- * return 1 upon error
- */
-static uint32_t   openDataFile (void)
-{
-    uint32_t  i;
-
-    if (fileState == 0)
-    {
-        if (f_mount (0, &fatfs) != FR_OK)
-            fileState = -1;
-        fileState = 1;
-        FileID = getNextFileID ();
-        i      = openOutputFile (FileID, &file);
-        putHeader (&file);
-    }
-
-    if (fileState == -1)
-        return (1);
-    else
-        return 0;
-}
-
-
-
-/* find the next name that does not yet exist as file on the SD card;
- * if all file names are used, '1' is returned (i.e. older files are overwritten)
- */
-static uint32_t  getNextFileID (void)
-{
-    uint32_t  curID, found, r;
-    FIL       F1;
-
-    curID = 1;
-    found = 0;
-    while (!found)
-    {
-        sprintf (tBuffer, "%s%02d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
-        r = f_open (&F1, tBuffer, FA_READ);
-        /* if already exists, close and try next */
-        if (r == FR_OK)
-        {
-            curID++;
-            f_close (&F1);
-        }
-        else
-            found = 1;
-        /* if there are too much files, force use of ID '1' */
-        if ((!found) && (curID > MAX_FILE_ID_NUM))
-        {
-            curID = 1;
-            found = 1;
-        }
-    }
-
-    return (curID);
-}
-
-
-
-/* open the output file, including an ID number in the file name;
- * the ID number is given as argument;
- * return value is that of the called f_open() function
- */
-static uint32_t  openOutputFile (uint32_t curID, FIL *pFile)
-{
-    sprintf (tBuffer, "%s%02d%s", DATA_FILENAME_BASE, (int) curID, DATA_FILENAME_EXT);
-    return (f_open (pFile, (const char *) tBuffer, FA_WRITE));
-}
-
-
-
-/* write header information to the output (SD card file);
- * parameter is the current sensitivity value;
- * return value is a success/error message from the file system
- */
-static uint32_t  putHeader (FIL *pFile)
-{
-    uint32_t  bCnt, ret = 0;
-
-    sprintf (tBuffer, "#! -Air Pressure / Infrasound Logger V%d.%d (c)fm ---\n# @150\n", SW_VERSION_MAJOR, SW_VERSION_MINOR);
-    ret  = f_write (pFile, tBuffer, strlen(tBuffer), (UINT *) &bCnt);
-    if (ret == 0)
-        f_sync (pFile);
-
-    return (ret);
-}
-
-
-
-/* write a data item to the output (SD card file);
- * parameter is the current data value and the file pointer;
- * return value is a success/error message from the file system
- * (0 = o.k; 1..n = error)
- */
-
-static uint32_t  putDataItem (uint16_t data, FIL *pFile)
-{
-    uint32_t         ret, bCnt = 0;
-    char             lbuf[16];
-    static uint16_t  wcount = 0;
-
-    sprintf (lbuf,"%hX\n", data);
-    ret = f_write (pFile, lbuf, strlen(lbuf), (UINT *) &bCnt);
-    if (ret != 0)
-        return (ret);
-
-    // do a file sync once in a while ...
-    wcount++;
-    if (wcount >= FSYNC_SIZE)
-    {
-        f_sync (pFile);
-        wcount = 0;
-    }
-    return 0;
 }
 
 
