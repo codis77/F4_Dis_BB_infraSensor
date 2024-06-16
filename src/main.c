@@ -321,7 +321,7 @@ static void  eLoop (void)
  */
 static void  sendDataItem (uint16_t data)
 {
-    sprintf (sBuffer, "%d\n", data);
+    sprintf (sBuffer, "%hu\n", data);
 
     // initialize UART TXE interrupt, and send first character
     USART6->CR1 |= USART_CR1_TXEIE;
